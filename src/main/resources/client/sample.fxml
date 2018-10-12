@@ -6,7 +6,9 @@
 <?import javafx.scene.control.PasswordField?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.Label?>
-<VBox fx:controller="client.Controller"
+<?import javafx.scene.web.WebView?>
+
+<VBox prefHeight="400.0" prefWidth="750.0" fx:controller="client.Controller"
       xmlns:fx="http://javafx.com/fxml" stylesheets="@mystyle.css">
     <HBox fx:id="loginPanel">
         <TextField fx:id="loginField" promptText="логин" HBox.hgrow="ALWAYS" onAction="#authentication"/>
@@ -33,14 +35,16 @@
 
     </VBox>
 
-    <HBox VBox.vgrow="ALWAYS">
-        <TextArea fx:id="textArea" editable="false"/>
-        <ListView fx:id="clientsListArea" onMouseClicked="#clientChoice"/>
+    <HBox fx:id="centerPanel" visible="false" managed="false" VBox.vgrow="ALWAYS">
+        <WebView fx:id="messageView" HBox.hgrow="ALWAYS"/>
+        <ListView fx:id="contactList" onMouseClicked="#clientChoice" minWidth="200"/>
     </HBox>
 
     <HBox fx:id="messagePanel" visible="false" managed="false">
         <TextField fx:id="msgField" promptText="Написать сообщение..." HBox.hgrow="ALWAYS" onAction="#sendMessage"/>
         <Button fx:id="buttonSend" text="Отправить" onAction="#sendMessage"/>
         <Button fx:id="buttonExit" text="Выход" onAction="#exit"/>
+        <Button fx:id="buttonAdd" text="добавить" onAction="#addContact"/>
+        <TextField fx:id="addContact" promptText="контакт для добавления..."/>
     </HBox>
 </VBox>

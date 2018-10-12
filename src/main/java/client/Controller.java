@@ -1,5 +1,6 @@
 package client;
 
+import database.dao.DataBaseService;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
@@ -10,8 +11,9 @@ import javafx.scene.control.*;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebView;
 import javafx.util.Callback;
-import jdk.nashorn.internal.parser.JSONParser;
 
 import java.net.URL;
 import java.text.SimpleDateFormat;
@@ -19,8 +21,9 @@ import java.util.Date;
 import java.util.ResourceBundle;
 
 public class Controller implements Initializable {
+    private static String token;
     @FXML
-    private TextArea textArea;
+    private HBox centerPanel;
     @FXML
     private TextField msgField;
     @FXML
@@ -32,8 +35,9 @@ public class Controller implements Initializable {
     @FXML
     private PasswordField passFiead;
     @FXML
-    private ListView<String> clientsListArea;
-
+    private ListView<String> contactList;
+    @FXML
+    private TextField addContact;
     @FXML
     private VBox regPanel;
     @FXML
@@ -46,10 +50,22 @@ public class Controller implements Initializable {
     private TextField passFieldRegDouble;
     @FXML
     private TextField regEmailField;
+    @FXML
+    Button buttonAdd;
+    @FXML
+
+    private DataBaseService dbService;
+    private ObservableList<String> contactsObservList;
+
+    @FXML
+    private WebView messageView = null;
+    private WebEngine webEngine = null;
 
     private String myNick;
+    private String msgArea = "";
+    private String receiver = "24";
 
-    Connector conn = null;
+    private Connector conn = null;
 
     private void setAutorized(boolean autorized) {
         if (autorized) {
@@ -57,6 +73,10 @@ public class Controller implements Initializable {
             loginPanel.setManaged(false);
             messagePanel.setVisible(true);
             messagePanel.setManaged(true);
+            centerPanel.setVisible(true);
+            centerPanel.setManaged(true);
+            fillContactList();
+            webtest();
         } else {
             loginPanel.setVisible(true);
             loginPanel.setManaged(true);
@@ -66,13 +86,29 @@ public class Controller implements Initializable {
         }
     }
 
-
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        setAutorized(false); // временно изменено на true
-        ObservableList<String> clientsObsvList = FXCollections.observableArrayList();
-        clientsListArea.setItems(clientsObsvList);
-        clientsListArea.setCellFactory(new Callback<ListView<String>, ListCell<String>>() {
+        setAutorized(false);
+        dbService = new DataBaseService();
+
+        okButtonReg.disableProperty().bind(
+                Bindings.createBooleanBinding(
+                        () -> regLoginField.getText().length() == 0
+                                || passFieldReg.getText().length() == 0
+                                || passFieldRegDouble.getText().length() == 0
+                                || regEmailField.getText().length() == 0
+                                || !passFieldReg.getText().equals(passFieldRegDouble.getText()),
+                        regLoginField.textProperty(),
+                        passFieldReg.textProperty(),
+                        passFieldRegDouble.textProperty(),
+                        regEmailField.textProperty()));
+    }
+
+    private void fillContactList() {
+        contactsObservList = FXCollections.observableArrayList();
+        contactList.setItems(contactsObservList);
+
+        contactList.setCellFactory(new Callback<ListView<String>, ListCell<String>>() {
             @Override
             public ListCell<String> call(ListView<String> param) {
                 return new ListCell<String>() {
@@ -94,102 +130,72 @@ public class Controller implements Initializable {
             }
         });
 
-        okButtonReg.disableProperty().bind(
-                Bindings.createBooleanBinding(
-                        () -> regLoginField.getText().length() == 0
-                                || passFieldReg.getText().length() == 0
-                                || passFieldRegDouble.getText().length() == 0
-                                || regEmailField.getText().length() == 0
-                                || !passFieldReg.getText().equals(passFieldRegDouble.getText()),
-                        regLoginField.textProperty(),
-                        passFieldReg.textProperty(),
-                        passFieldRegDouble.textProperty(),
-                        regEmailField.textProperty()));
+        contactsObservList.clear();
+        contactsObservList.addAll(dbService.getAllUserNames());
     }
 
     private void connect(String token) {
-        conn = new Connector(token,this);
+        conn = new Connector(token, this);
     }
 
     public void authentication() {
         if (!loginField.getText().isEmpty() && !passFiead.getText().isEmpty()) {
-            String token;
+            //String token;
             String answer = "0";
-            String reqJSON ="{" +
-                "\"user\": \""+ loginField.getText() +"\"," +
-                "\"password\": \""+ passFiead.getText() +"\"" +
-                "}";
+            String reqJSON = "{" +
+                    "\"account_name\": \"" + loginField.getText() + "\"," +
+                    "\"password\": \"" + passFiead.getText() + "\"" +
+                    "}";
             try {
                 answer = HTTPSRequest.avtorization(reqJSON);
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            if (answer.contains("token")){
+            if (answer.contains("token")) {
                 //тут надо обработать JSON по нармальному
-                token = answer.substring(answer.indexOf("token")+9,answer.indexOf(",")-1);
-                System.out.println("TOKEN "+token);
+                token = answer.substring(answer.indexOf("token") + 9, answer.indexOf(",") - 1);
                 setAutorized(true);
                 connect(token);
-                myNick= loginField.getText() ;
+                myNick = loginField.getText();
 
             }
+        } else {
+            showAlert("Неполные данные для авторизации!", "Результат");
         }
-
-//        if (!loginField.getText().isEmpty() && !passFiead.getText().isEmpty()) {
-//            if (session == null || !(session.isOpen()))
-//                connect();
-//            try {   // имитация аутентификации
-//                session.getBasicRemote().sendText("/auth " +
-//                        loginField.getText() + " " +
-//                        passFiead.getText());
-//                loginField.clear();
-//                passFiead.clear();
-//
-//                textArea.appendText("успешная авторизация\n");
-//                setAutorized(true);
-//                myNick = "MyNick";
-//
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        } else {
-//            showAlert("Неполные данные для авторизации!");
-//        }
     }
 
     public void sendMessage() {
         Date dateNow = new Date();
         SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
-//        String completeMessage = dateFormat.format(dateNow) + " : " + msgField.getText();
 
-        String adres = myNick.equals("2")?"3":"2";
+//        String receiver = myNick.equals("tester2") ? "25" : "24";
         String mess = "{ \"receiver\":\"" +
-                adres +
+                receiver +
                 "\", \"message\":\"" +
-                "["+dateFormat.format(dateNow)+"] "+ myNick+" :  "+
-                msgField.getText()+"\" }";
+                myNick + " [" + dateFormat.format(dateNow) + "]: " +
+                msgField.getText() + "\" }";
         System.out.println(mess);
         conn.chatclient.send(mess);
-        reciveMessage("["+dateFormat.format(dateNow)+"] "+ msgField.getText());
+        reciveMessage(myNick + " [" + dateFormat.format(dateNow) + "]: " + msgField.getText());
         msgField.clear();
 
-//          Date dateNow = new Date();
-//        SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
-//        String completeMessage = dateFormat.format(dateNow) + " : " + msgField.getText();
-//
-//        try {
-//            session.getBasicRemote().sendText(completeMessage);
-//            msgField.clear();
-//            msgField.requestFocus();
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
-    }
-    public void reciveMessage(String message){
-        textArea.appendText(message + "\n");
     }
 
-    private void showAlert(String message , String title) {
+    void reciveMessage(String message) {
+        msgArea += message + "<br>";
+        webEngine.loadContent(  "<html>" +
+                                    "<body>" +
+                                        "<p style=\"font-size: 16px\">" +
+                                            msgArea +
+                                            "<script>" +
+                                                "javascript:scroll(0,10000)" +
+                                            "</script>"+
+                                        "</p>" +
+                                    "<body>" +
+                                "</html>");
+    }
+
+    private void showAlert(String message, String title) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
             alert.setTitle(title);
@@ -200,8 +206,11 @@ public class Controller implements Initializable {
     }
 
     public void clientChoice(MouseEvent event) {
-        if (event.getClickCount() == 2) {
-            msgField.setText("/w " + clientsListArea.getSelectionModel().getSelectedItem() + " ");
+        if (event.getClickCount() == 1) {
+//            msgField.setText("/w " + contactList.getSelectionModel().getSelectedItem() + " ");
+            receiver = contactList.getSelectionModel().getSelectedItem();
+            showAlert("Сообщения будут отправляться контакту \n"
+                    +receiver,"Временное решение");
             msgField.requestFocus();
             msgField.selectEnd();
         }
@@ -230,32 +239,83 @@ public class Controller implements Initializable {
     }
 
     public void conn2() {
-        setAutorized(true);
-        connect("2d1ea610bc493d76");
-        myNick ="2";
+        // id = 24
+        myNick = "tester2";
+        loginField.setText("tester2");
+        passFiead.setText("123");
+        authentication();
+        receiver ="25";
     }
+
     public void conn3() {
-        setAutorized(true);
-        connect("f5b7c119e858b9f3");
-        myNick= "3";
+        //id = 25
+        myNick = "tester3";
+        loginField.setText("tester3");
+        passFiead.setText("123");
+        authentication();
+        receiver ="24";
     }
+
     public void exit() {
         setAutorized(false);
         conn.chatclient.close();
+        dbService.close();
     }
 
-    public void registration(){
-        String requestJSON  = "{" +
-                "\"account_name\": \""+  regLoginField.getText()  +"\"," +
-                "\"email\": \""+  regEmailField.getText()  +"\"," +
-                "\"password\": \""+  passFieldReg.getText()  +"\"" +
+    public void registration() {
+        String requestJSON = "{" +
+                "\"account_name\": \"" + regLoginField.getText() + "\"," +
+                "\"email\": \"" + regEmailField.getText() + "\"," +
+                "\"password\": \"" + passFieldReg.getText() + "\"" +
                 "}";
         try {
-            HTTPSRequest.registration(requestJSON);
+            int responseCode = HTTPSRequest.registration(requestJSON);
+            if (responseCode == 201) {
+                offShowReg();
+                showAlert("Вы успешно зарегистрированы", "Результат");
+                loginField.setText(regLoginField.getText());
+                passFiead.setText(passFieldReg.getText());
+            } else
+                showAlert("Ошибка регистрации, код: " + responseCode, "Результат");
         } catch (Exception e) {
             e.printStackTrace();
         }
-        offShowReg();
-        showAlert("Вы успешно зарегистрированы","Результат");
     }
+
+
+    public void addContact() {
+        String requestJSON = "{" +
+                "\"contact\": " + "\"" + addContact.getText() + "\"" +
+                "}";
+        try {
+            int userId = HTTPSRequest.addContact(requestJSON, token);
+            if (userId != -1) {
+                addToList(userId);
+            } else {
+                showAlert("Пользователь с email: " + addContact.getText() +
+                        " не найден", "Ошибка добавления контакта");
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
+
+    private void addToList(int uid) {
+        String id = String.valueOf(uid);
+//         в дальнейшем будет добавлен User , а не id юзера
+        if (!contactsObservList.contains(id)) {
+            contactsObservList.add(id);
+            showAlert("Контакт " + id + " успешно добавлен", "Добавление контакта");
+        } else {
+            showAlert("Пользователь " + id + " уже есть в списке ваших контактов", "Ошибка добавления контакта");
+        }
+    }
+    
+    private void webtest() {
+        messageView = new WebView();
+        webEngine = messageView.getEngine();
+        centerPanel.getChildren().add(0, messageView);
+    }
+
+}
