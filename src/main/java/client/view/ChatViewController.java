@@ -6,10 +6,12 @@ import client.utils.Common;
 import client.utils.CustomTextArea;
 import client.utils.Sound;
 import client.view.customFX.CFXListElement;
+import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Worker;
+import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
@@ -34,6 +36,7 @@ import org.w3c.dom.events.Event;
 import org.w3c.dom.events.EventListener;
 import org.w3c.dom.events.EventTarget;
 import java.awt.*;
+import java.awt.Label;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -67,6 +70,25 @@ public class ChatViewController implements Initializable {
     @FXML
     private Tab contacts;
 
+    @FXML
+    private AnchorPane userSearchPane;
+
+    @FXML
+    private JFXButton bAddContact;
+
+    @FXML
+    private AnchorPane groupSearchPane;
+
+    @FXML
+    private AnchorPane groupListPane;
+
+    @FXML
+    private AnchorPane groupNewPane;
+
+    @FXML
+    private JFXListView<CFXListElement> listViewAddToGroup;
+
+
     //
     private WebEngine webEngine;
 
@@ -80,7 +102,7 @@ public class ChatViewController implements Initializable {
 
     private String tsOld;
 
-    private int idDivMsg =0;
+    private int idDivMsg;
 
     //ссылка на desktop
     private Desktop desktop;
@@ -92,11 +114,12 @@ public class ChatViewController implements Initializable {
     @Override
     public void initialize(URL url, ResourceBundle rb) {
         DOMdocument = null;
-        tsOld = null;
+        tsOld = null; //чистка даты
+        idDivMsg = 0; //присваивание ID
 
         webEngine = messageWebView.getEngine(); //инициализация WebEngine
         initBackgroundWebView();
-        //initWebView(); //при запуске от теста вызывается еще раз. Если не будет вызова там, тут расскоментировать
+        initWebView();
 
         clientController = ClientController.getInstance();
         clientController.setChatViewController(this);
@@ -371,13 +394,14 @@ public class ChatViewController implements Initializable {
     private void handleDisconnectButton() {
         Stage stage = (Stage) messagePanel.getScene().getWindow();
         stage.close();
+        clientController.disconnect();
+        Tray.currentStage = null;
         Main.initRootLayout();
         Main.showOverview();
     }
 
     @FXML
     private void handleExit() {
-        clientController.dbServiceClose();
         clientController.disconnect();
         System.exit(0);
     }
@@ -405,14 +429,26 @@ public class ChatViewController implements Initializable {
 
     @FXML
     private void handleAddContactButton() throws IOException {
-        FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("/client/fxml/AddContactView.fxml"));
-        Parent root = fxmlLoader.load();
-        Stage stage = new Stage();
-        stage.initModality(Modality.APPLICATION_MODAL);
-        stage.setTitle("Add contact");
-        stage.setResizable(false);
-        stage.setScene(new Scene(root));
-        stage.show();
+        contactListView.setVisible(false);
+        bAddContact.setVisible(false);
+        userSearchPane.setVisible(true);
+        userSearchPane.setFocusTraversable(true);
+
+//        FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("/client/fxml/AddContactView.fxml"));
+//        Parent root = fxmlLoader.load();
+//        Stage stage = new Stage();
+//        stage.initModality(Modality.APPLICATION_MODAL);
+//        stage.setTitle("Add contact");
+//        stage.setResizable(false);
+//        stage.setScene(new Scene(root));
+//        stage.show();
+
+    }
+    @FXML
+    private void onUserSearchButtonClicked(){
+        bAddContact.setVisible(true);
+        contactListView.setVisible(true);
+        userSearchPane.setVisible(false);
     }
 
     //подписка на обработку открытия ссылок
@@ -440,7 +476,7 @@ public class ChatViewController implements Initializable {
                         //if (desktop.isSupported(Desktop.Action.BROWSE)) {
                             desktop.browse(new URI(href.contains("://") ? href : "http://" + href + "/"));
                             //отменяем событие, чтобы ссылка не открывалась в самом webView
-                            //evt.preventDefault();
+                            evt.preventDefault();
                         /*} else {
                             System.out.println("Could not load URL: " + href);
                         }*/
@@ -477,8 +513,24 @@ public class ChatViewController implements Initializable {
     public void handleSendSmile(MouseEvent mouseEvent) {
     }
 
+    /**
+     * Вызывается для чистки документа внутри WebEngine
+     * при первом вызове чистки нет, т.к. DOMdocument == null
+     * так де обнуляем дату для группировки (tsOld) и ID для DIV
+     */
     public void clearMessageWebView() {
-        initWebView();
+        if (DOMdocument != null) {
+            //чистим все, что внутри тегов <body></body>
+            Node body = DOMdocument.getElementsByTagName("body").item(0);
+            Node fc = body.getFirstChild();
+            while (fc != null) {
+                body.removeChild(fc);
+                fc = body.getFirstChild();
+            }
+        }
+
+        tsOld = null; //чистка даты
+        idDivMsg =0; //присваивание ID
     }
 
     //метод смены иконки
@@ -516,4 +568,39 @@ public class ChatViewController implements Initializable {
         return imageView;
     }
 
+    public void onGroupSearchButtonClicked(ActionEvent actionEvent) {
+        groupSearchPane.setVisible(false);
+    }
+
+    public void handleGroupSearchButton(MouseEvent mouseEvent) {
+        groupListPane.setVisible(false);
+        groupSearchPane.setVisible(true);
+    }
+
+    public void handleGroupNewButton(MouseEvent mouseEvent) {
+
+        groupListPane.setVisible(false);
+    }
+
+    public void onGroupSearchCancelButtonPressed(ActionEvent actionEvent) {
+        groupSearchPane.setVisible(false);
+        groupListPane.setVisible(true);
+    }
+
+    public void onSearchGroupButtonClicked(ActionEvent actionEvent) {
+        groupListPane.setVisible(false);
+        groupSearchPane.setVisible(true);
+    }
+
+    public void onNewGroupClicked(ActionEvent actionEvent) {
+        groupListPane.setVisible(false);
+        listViewAddToGroup.setExpanded(true);
+        listViewAddToGroup = contactListView;
+        groupNewPane.setVisible(true);
+    }
+
+    public void onGroupNewCancelButtonPressed(ActionEvent actionEvent) {
+        groupNewPane.setVisible(false);
+        groupListPane.setVisible(true);
+    }
 }
