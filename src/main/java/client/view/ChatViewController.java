@@ -6,8 +6,13 @@ import client.utils.Common;
 import client.utils.CustomTextArea;
 import client.utils.Sound;
 import client.view.customFX.CFXListElement;
+import client.view.customFX.CFXMyProfile;
 import com.jfoenix.controls.JFXButton;
+import com.jfoenix.controls.JFXHamburger;
 import com.jfoenix.controls.JFXListView;
+import com.jfoenix.transitions.hamburger.HamburgerBackArrowBasicTransition;
+import com.jfoenix.transitions.hamburger.HamburgerBasicCloseTransition;
+import com.jfoenix.controls.JFXTextField;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Worker;
@@ -15,9 +20,13 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
+import javafx.scene.AccessibleAction;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
@@ -37,6 +46,7 @@ import org.w3c.dom.events.EventListener;
 import org.w3c.dom.events.EventTarget;
 import java.awt.*;
 import java.awt.Label;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -86,8 +96,25 @@ public class ChatViewController implements Initializable {
     private AnchorPane groupNewPane;
 
     @FXML
+    private ScrollPane myProfilePane;
+
+    @FXML
     private JFXListView<CFXListElement> listViewAddToGroup;
 
+    @FXML
+    private Menu menuLeff;
+
+    @FXML
+    private JFXHamburger hamburger;
+
+    @FXML
+    private JFXTextField groupName;
+
+    @FXML
+    private JFXTextField creategroupName;
+
+    @FXML
+    private JFXTextField userSearchText;
 
     //
     private WebEngine webEngine;
@@ -107,6 +134,8 @@ public class ChatViewController implements Initializable {
     //ссылка на desktop
     private Desktop desktop;
     ////////////////////////
+    HamburgerBasicCloseTransition transition;
+    HamburgerBackArrowBasicTransition transitionBack;
 
     public ChatViewController() {
     }
@@ -141,6 +170,9 @@ public class ChatViewController implements Initializable {
                 event.consume();
             }
         });
+        transition = new HamburgerBasicCloseTransition(hamburger);
+        transitionBack = new HamburgerBackArrowBasicTransition(hamburger);
+        PaneProvider.setTransitionBack(transitionBack);
     }
 
 
@@ -369,7 +401,7 @@ public class ChatViewController implements Initializable {
             Sound.playSoundNewMessage().join();
         }
 
-        String attrClass="";
+        String attrClass;
         if (clientController.getSenderName().equals(senderName)) {
             attrClass = "myUserClass";
         } else {
@@ -378,16 +410,31 @@ public class ChatViewController implements Initializable {
 
         //Подписка на событие загрузки документа HTML in WebView
         if (DOMdocument == null) {
-            String attrClass2 = attrClass; //не понял почему, но attrClass требуется final не изменяемый дальше
+            DOMdocument = webEngine.getDocument(); // TODO исправить костыль? (см. "костыль" в ПР127)
             webEngine.getLoadWorker().stateProperty().addListener((observable, oldState, newState) -> {
                 if (newState == Worker.State.SUCCEEDED) {
-                    DOMdocument = webEngine.getDocument();
-                    createMessageDiv(message, senderName, timestamp, attrClass2);
+                    createMessageDiv(message, senderName, timestamp, attrClass);
+                    updateLastMessageInCardsBody(message, senderName);
                 }
             });
         }else {
             createMessageDiv(message, senderName, timestamp, attrClass);
+            updateLastMessageInCardsBody(message, senderName);
         }
+    }
+
+    private void updateLastMessageInCardsBody(String message, String senderName){
+        CFXListElement targetChat = null;
+        
+        for (CFXListElement element : contactsObservList){
+            if (element.getUser().getAccount_name().equals(senderName)) targetChat = element;
+        }
+        if (targetChat == null) return; //TODO определить вероятность и доделать (вывод ошибки пользователю, лог)
+        targetChat.setBody(message);
+    }
+
+    public void addNewUserToContacts(CFXListElement newUser) {
+        contactsObservList.add(newUser);
     }
 
     @FXML
@@ -446,11 +493,13 @@ public class ChatViewController implements Initializable {
     }
     @FXML
     private void onUserSearchButtonClicked(){
+        clientController.addContact(userSearchText.getText());
+        userSearchText.clear();
         bAddContact.setVisible(true);
         contactListView.setVisible(true);
         userSearchPane.setVisible(false);
     }
-
+    
     //подписка на обработку открытия ссылок
     //Element tagElement = <div class="msg">
     private void addListenerLinkExternalBrowser(Element tagElement){
@@ -595,12 +644,51 @@ public class ChatViewController implements Initializable {
     public void onNewGroupClicked(ActionEvent actionEvent) {
         groupListPane.setVisible(false);
         listViewAddToGroup.setExpanded(true);
-        listViewAddToGroup = contactListView;
         groupNewPane.setVisible(true);
     }
 
     public void onGroupNewCancelButtonPressed(ActionEvent actionEvent) {
         groupNewPane.setVisible(false);
         groupListPane.setVisible(true);
+    }
+
+    public void onMyProfileOpen(ActionEvent actionEvent) {
+        PaneProvider.setMyProfileScrollPane(myProfilePane);
+        myProfilePane.setVisible(true);
+        PaneProvider.getTransitionBack().setRate(1);
+        PaneProvider.getTransitionBack().play();
+    }
+
+    public void onHamburgerClicked(MouseEvent mouseEvent) {
+        if (myProfilePane.isVisible()) {
+            myProfilePane.setVisible(false);
+            PaneProvider.getTransitionBack().setRate(-1);
+            transitionBack.play();
+        }
+        else if (!menuLeff.isShowing()){
+            transition.setRate(1);
+            transition.play();
+            menuLeff.show();
+        } else {
+            menuLeff.hide();
+        }
+
+    }
+
+    public void onHideMenuLeft(javafx.event.Event event) {
+
+        transition.setRate(-1);
+
+        transition.play();
+    }
+
+    @FXML
+    public void handleAddButton(){
+        clientController.joinGroup(groupName.getText());
+    }
+
+    @FXML
+    public void handleCreateButton(){
+        clientController.addGroup(creategroupName.getText());
     }
 }

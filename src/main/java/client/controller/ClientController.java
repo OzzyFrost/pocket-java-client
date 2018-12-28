@@ -1,5 +1,6 @@
 package client.controller;
 
+import client.model.Group;
 import client.model.ServerResponse;
 import client.model.formatMsgWithServer.*;
 import client.utils.Connector;
@@ -185,18 +186,7 @@ public class ClientController {
         for (Message message :
                 converstation) {
             chatViewController.showMessage(message.getSender().getAccount_name(), message.getText(), message.getTime(), false);
-            contactListOfCards.get(getListIDbyUID(message.getSender().getUid())).setBody(message.getText());
-
         }
-    }
-
-    private int getListIDbyUID(Long uid){
-        int index=-1;
-        for (CFXListElement element : contactListOfCards){
-            index++;
-            if (element.getUser().getUid()==uid) return index;
-        }
-        return -1;
     }
 
     public void disconnect() {
@@ -213,12 +203,10 @@ public class ClientController {
         contactListOfCards = null;
     }
 
-    private Map<String, ContactListFromServer> convertContactListToMap(String jsonText) {
+    private ContactListFromServer[] convertContactListToMap(String jsonText) {
         GsonBuilder builder = new GsonBuilder();
         Gson gson = builder.create();
-        Type itemsMapType = new TypeToken<Map<String, ContactListFromServer>>() {
-        }.getType();
-        return gson.fromJson(jsonText, itemsMapType);
+        return gson.fromJson(jsonText, ContactListFromServer[].class);
     }
 
     private void synchronizeContactListAsAdressBook(){
@@ -226,10 +214,9 @@ public class ClientController {
         Iterator it = contactList.iterator();
         while (it.hasNext()){
             Long id = (Long) it.next();
-            //TODO если разкомментировать с ними не работает. Не понятно почему.
-            /*if (id.equals(ClientController.getInstance().myUser.getUid())) {
+            if (id.equals(myUser.getUid())) {
                 continue;
-            }*/
+            }
             CFXListElement element = new CFXListElement();
             element.setUser(dbService.getUser(id));
 
@@ -247,13 +234,10 @@ public class ClientController {
         try {
             ServerResponse response = HTTPSRequest.getContacts(token);
             if (response != null) {
-                Map<String, ContactListFromServer> map = convertContactListToMap(response.getResponseJson());
-                for (Map.Entry<String, ContactListFromServer> entry : map.entrySet()) {
-                    if (!contactList.contains(entry.getValue().getId())) {
-                        User user = new User();
-                        user.setUid(entry.getValue().getId());
-                        user.setAccount_name(entry.getValue().getName());
-                        user.setEmail(entry.getKey());
+                for (ContactListFromServer entry : convertContactListToMap(response.getResponseJson())) {
+                    if (!contactList.contains(entry.getId())) {
+                        User user = new User(entry.getId(), entry.getName(), entry.getEmail());
+//                        user.setStatus(entry.getStatus()); //TODO добавить статусы в класс пользователей?
                         CFXListElement element = new CFXListElement();
                         element.setUser(user);
                         contactListOfCards.add(element);
@@ -275,11 +259,100 @@ public class ClientController {
     private User convertJSONToUser(String jsonText) {
         GsonBuilder builder = new GsonBuilder();
         Gson gson = builder.create();
-        //TODO дебилизм, но пока с БД не разберемся так
-        System.out.println("новое АПИ MYSELFUSER "+jsonText);
-        String jsText="{\"u"+jsonText.substring(7);
-        System.out.println("переделано как старое АПИ MYSELFUSER "+jsText);
-        return gson.fromJson(jsText, User.class);
+        return gson.fromJson(jsonText, User.class);
+    }
+
+    public Group getGroupInfo(String groupName){
+        Group group = new Group();
+        try {
+            ServerResponse response = HTTPSRequest.getGroupInfo(groupName,token);
+            switch (response.getResponseCode()){
+                case 200:
+                    System.out.println("получение информации о группе");
+                    GsonBuilder builder = new GsonBuilder();
+                    Gson gson = builder.create();
+                    group = gson.fromJson(response.getResponseJson(), Group.class);
+                    return group;
+                case 400:
+                    System.out.println("Проблемы с токеном");
+                    break;
+                case 404:
+                    System.out.println("группа не найдена");
+                    break;
+                case 500:
+                    System.out.println("ошибка сервера");
+                    break;
+                default:
+                    System.out.println("другая ошибка");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return group;
+    }
+
+    public void joinGroup(String groupName){
+        Group group = getGroupInfo(groupName);
+        addUserGroup(group.getGid(), Long.toString(myUser.getUid()));
+    }
+
+    public void addGroup(String group_name){
+        AddGroup addGroup = new AddGroup(group_name);
+        String requestJSON = new Gson().toJson(addGroup);
+
+        try {
+            ServerResponse response = HTTPSRequest.addGroup(requestJSON, token);
+            switch (response.getResponseCode()) {
+                case 200:
+                    showAlert("Группа" + group_name + "успешно создана", Alert.AlertType.INFORMATION);
+                    //addContactToDB(convertJSONToUser(response.getResponseJson()));
+                    //if (chatViewController != null) chatViewController.fillContactListView();
+                    break;
+                case 400:
+                    showAlert("Ошибка запроса", Alert.AlertType.ERROR);
+                    break;
+                case 404:
+                    showAlert("Невозможно создать группу с названием: " + group_name, Alert.AlertType.ERROR);
+                    break;
+                case 500:
+                    showAlert("Ошибка сервера", Alert.AlertType.ERROR);
+                    break;
+                default:
+                    showAlert("Общая ошибка!", Alert.AlertType.ERROR);
+            }
+        } catch (Exception e) {
+            controllerLogger.error("HTTPSRequest.addGroup_error", e);
+        }
+
+    }
+
+    public void addUserGroup(String group_id, String new_user_id) {
+        AddUserGroup aug = new AddUserGroup(group_id, new_user_id);
+        String requestJSON = new Gson().toJson(aug);
+
+        try {
+            ServerResponse response = HTTPSRequest.addUserGroup(requestJSON, token);
+            switch (response.getResponseCode()) {
+                case 200:
+                    showAlert("Группа успешно добавлена", Alert.AlertType.INFORMATION);
+                    //addContactToDB(convertJSONToUser(response.getResponseJson()));
+                    //if (chatViewController != null) chatViewController.fillContactListView();
+                    break;
+                case 400:
+                    showAlert("Ошибка запроса", Alert.AlertType.ERROR);
+                    break;
+                case 404:
+                    showAlert("Группа не найдена или вы уже состоите в ней", Alert.AlertType.ERROR);
+                    break;
+                case 500:
+                    showAlert("Ошибка сервера", Alert.AlertType.ERROR);
+                    break;
+                default:
+                    showAlert("Общая ошибка!", Alert.AlertType.ERROR);
+            }
+        } catch (Exception e) {
+            controllerLogger.error("HTTPSRequest.addUserGroup_error", e);
+        }
     }
 
     public void addContact(String contact) {
@@ -291,8 +364,14 @@ public class ClientController {
             switch (response.getResponseCode()) {
                 case 201:
                     showAlert("Контакт " + contact + " успешно добавлен", Alert.AlertType.INFORMATION);
-                    addContactToDB(convertJSONToUser(response.getResponseJson()));
-                    if (chatViewController != null) chatViewController.fillContactListView();
+                    User newUser = convertJSONToUser(response.getResponseJson());
+                    addContactToDB(newUser);
+                    if (chatViewController != null) {
+                        chatViewController.fillContactListView();
+                        CFXListElement newEl = new CFXListElement();
+                        newEl.setUser(newUser);
+                        chatViewController.addNewUserToContacts(newEl);
+                    }
                     break;
                 case 404:
                     showAlert("Пользователь с email: " + contact + " не найден", Alert.AlertType.ERROR);
