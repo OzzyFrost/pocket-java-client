@@ -7,36 +7,28 @@ import client.utils.CustomTextArea;
 import client.utils.Sound;
 import client.view.customFX.CFXListElement;
 import client.view.customFX.CFXMyProfile;
-import client.view.customFX.CFXOtherProfile;
-import com.jfoenix.controls.JFXButton;
-import com.jfoenix.controls.JFXHamburger;
-import com.jfoenix.controls.JFXListView;
+import com.jfoenix.controls.*;
 import com.jfoenix.transitions.hamburger.HamburgerBackArrowBasicTransition;
 import com.jfoenix.transitions.hamburger.HamburgerBasicCloseTransition;
-import com.jfoenix.controls.JFXTextField;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Worker;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
-import javafx.scene.AccessibleAction;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.scene.control.*;
 import javafx.scene.control.Menu;
-import javafx.scene.control.MenuBar;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SingleSelectionModel;
+import javafx.scene.control.Tab;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
-import javafx.stage.Modality;
 import javafx.stage.Stage;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -45,9 +37,8 @@ import org.w3c.dom.NodeList;
 import org.w3c.dom.events.Event;
 import org.w3c.dom.events.EventListener;
 import org.w3c.dom.events.EventTarget;
-import java.awt.*;
-import java.awt.Label;
 
+import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -55,11 +46,10 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.ResourceBundle;
-
-import static client.utils.Common.showAlert;
 
 public class ChatViewController implements Initializable {
 
@@ -88,13 +78,18 @@ public class ChatViewController implements Initializable {
     private JFXButton bAddContact;
 
     @FXML
-    private AnchorPane groupSearchPane;
+    private AnchorPane contactsViewPane;
 
+    @FXML
+    private AnchorPane groupSearchPane;
     @FXML
     private AnchorPane groupListPane;
 
     @FXML
     private AnchorPane groupNewPane;
+
+    @FXML
+    private AnchorPane contactSearchPane;
 
     @FXML
     private ScrollPane profileScrollPane;
@@ -117,11 +112,14 @@ public class ChatViewController implements Initializable {
     @FXML
     private CFXMyProfile myProfile;
 
-
+    @FXML
+    private JFXTextField tfSearchInput;
 
     @FXML
     private JFXTextField userSearchText;
 
+    @FXML
+    private JFXTabPane tabPane;
     //
     private WebEngine webEngine;
 
@@ -137,6 +135,23 @@ public class ChatViewController implements Initializable {
 
     private int idDivMsg;
 
+    @FXML
+    private  JFXButton btnContactSearchCancel;
+
+    @FXML
+    private JFXButton btnContactSearchInvite;
+
+    @FXML
+    private JFXListView<CFXListElement> searchList;
+    private ObservableList<CFXListElement> searchObsList;
+
+    private void initListenersToButtons(){
+        btnContactSearchCancel.setOnAction(event -> contactSearchButtonCancelClicked());
+        btnContactSearchInvite.setOnAction(event -> contactSearchButtonInviteClicked());
+
+    }
+
+    private SingleSelectionModel<Tab> selectionModel;
     //ссылка на desktop
     private Desktop desktop;
     ////////////////////////
@@ -160,6 +175,8 @@ public class ChatViewController implements Initializable {
         clientController.setChatViewController(this);
         contactsObservList = FXCollections.observableList(ClientController.getInstance().getContactListOfCards());
         contactListView.setExpanded(true);
+        searchObsList = FXCollections.observableList(new ArrayList<CFXListElement>());
+        searchList.setExpanded(true);
         fillContactListView();
 
         desktop = Desktop.getDesktop();
@@ -179,6 +196,8 @@ public class ChatViewController implements Initializable {
         transition = new HamburgerBasicCloseTransition(hamburger);
         transitionBack = new HamburgerBackArrowBasicTransition(hamburger);
         PaneProvider.setTransitionBack(transitionBack);
+         selectionModel=tabPane.getSelectionModel();
+         initListenersToButtons();
     }
 
 
@@ -236,8 +255,8 @@ public class ChatViewController implements Initializable {
                         ".msgLogo { \n"+
                             "flex: none; \n"+
                             "align-self: start; \n"+
-                            "width: 35px; \n"+
-                            "height: 35px; \n"+
+                            "width: 33px; \n"+
+                            "height: 33px; \n"+
                             "background: lightgrey; \n"+
                             "border-radius: 50%; \n"+
                         "} \n"+
@@ -307,6 +326,27 @@ public class ChatViewController implements Initializable {
         }
     }
 
+    //  инициализация картинки аватара
+    //if sex = true, is a woman
+    //   sex = false, is a man
+    private String initAvatar(boolean sex) {
+        String path = "";
+        if (sex) {
+            path = "client/images/defaultAvatar/girl.png"; //картинка фона
+        }else {
+            path = "client/images/defaultAvatar/man.png"; //картинка фона
+        }
+        ClassLoader cl = this.getClass().getClassLoader();
+        String avatar = "";
+        try {
+            avatar = cl.getResource(path).toURI().toString();
+        }catch (Exception e) {
+            //todo перенести в логирование
+            e.printStackTrace();
+        }
+        return avatar;
+    }
+
     /**
      *
      * @param pattern
@@ -345,6 +385,11 @@ public class ChatViewController implements Initializable {
         //ID требуется для скрипта вставки тегов
         idDivMsg+=1;
         String idMsg = "msg"+idDivMsg;
+        //получаем аватар
+        //тут по идеи подбор по полу. Оставляю чтобы было понятно куда вставляется и настроить стили
+        String avatar = initAvatar(false); //man
+        String styleStr = "background-image: url(" + avatar + "); background-size: cover";
+        //
 
         SimpleDateFormat dateFormatDay = initDateFormat("d MMMM");
         SimpleDateFormat dateFormat = initDateFormat("HH:mm");
@@ -379,6 +424,7 @@ public class ChatViewController implements Initializable {
         Element divTime = DOMdocument.createElement("div");
         div.setAttribute("class", "message");
         divLogo.setAttribute("class", "msgLogo");
+        divLogo.setAttribute("style", styleStr);
         divTxt.setAttribute("class", attrClass+" msgTxt");
         divTxtSender.setAttribute("class", attrClass+"S sender");
         divTxtMsg.setAttribute("class", attrClass+"M msg");
@@ -481,7 +527,7 @@ public class ChatViewController implements Initializable {
     }
 
     @FXML
-    private void handleAddContactButton() throws IOException {
+    private void handleAddContactButton() {
         contactListView.setVisible(false);
         bAddContact.setVisible(false);
         userSearchPane.setVisible(true);
@@ -700,4 +746,34 @@ public class ChatViewController implements Initializable {
     public void handleCreateButton(){
         clientController.addGroup(creategroupName.getText());
     }
+
+    public void findContact(KeyEvent keyEvent) {
+        if (tfSearchInput.getText().length()>0) {
+            contactsViewPane.setVisible(false);
+            contactSearchPane.setVisible(true);
+            if (ClientController.getInstance().getAllUserNames().contains(tfSearchInput.getText())){
+              CFXListElement newSearchElement = new CFXListElement();
+              newSearchElement.setTopic(tfSearchInput.getText());
+                searchObsList.add(newSearchElement);
+            }
+            selectionModel.select(1);
+        } else {
+            contactsViewPane.setVisible(true);
+            contactSearchPane.setVisible(false);
+        }
+
+    }
+
+    private void contactSearchButtonInviteClicked() {
+        ClientController.getInstance().addContact(tfSearchInput.getText());
+        contactSearchButtonCancelClicked();
+    }
+
+    private void contactSearchButtonCancelClicked() {
+        contactsViewPane.setVisible(true);
+        tfSearchInput.setText("");
+        contactSearchPane.setVisible(false);
+    }
+
+
 }
